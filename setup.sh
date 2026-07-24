@@ -12,20 +12,7 @@ CHINA_MODE=0
 PIP_MIRROR=""
 HF_ENDPOINT=""
 
-# Check if user is in China (for mirror selection)
-echo "  [?] Are you in China? (y/n)"
-echo "      This will use faster mirrors for downloads"
-read -p "      " -n 1 -r china_choice
-echo
-if [[ $china_choice =~ ^[Yy]$ ]]; then
-    CHINA_MODE=1
-    PIP_MIRROR="-i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn"
-    HF_ENDPOINT="https://hf-mirror.com"
-    echo "  [OK] Using China mirrors (Tsinghua PyPI + HF-Mirror)"
-else
-    echo "  [OK] Using default mirrors"
-fi
-echo ""
+
 
 # Detect OS
 OS_TYPE="linux"

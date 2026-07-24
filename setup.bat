@@ -19,19 +19,7 @@ set PIP_MIRROR=
 set PIP_TRUSTED_HOST=
 set HF_ENDPOINT=
 
-:: Check if user is in China (for mirror selection)
-echo   [?] Are you in China? (y/n)
-echo       This will use faster mirrors for downloads
-set /p CHINA_CHOICE="      "
-if /i "%CHINA_CHOICE%"=="y" (
-    set CHINA_MODE=1
-    set PIP_MIRROR=-i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
-    set HF_ENDPOINT=https://hf-mirror.com
-    echo   [OK] Using China mirrors (Tsinghua PyPI + HF-Mirror)
-) else (
-    echo   [OK] Using default mirrors
-)
-echo.
+
 
 :: Check if embedded Python exists
 if not exist "%PYTHON_EXE%" (

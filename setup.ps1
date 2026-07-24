@@ -39,20 +39,7 @@ Write-Host "     WatermarkRemover-AI Setup                 " -ForegroundColor Cy
 Write-Host "  =============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Check if user is in China (for mirror selection)
-Write-Host "  [?] Are you in China? (y/n)" -ForegroundColor Yellow
-Write-Host "      This will use faster mirrors for downloads" -ForegroundColor DarkGray
-$chinaChoice = Read-Host "      "
-if ($chinaChoice -eq "y" -or $chinaChoice -eq "Y") {
-    $CHINA_MODE = $true
-    $PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
-    $PIP_EXTRA_ARGS = @("-i", $PIP_INDEX_URL, "--trusted-host", "pypi.tuna.tsinghua.edu.cn")
-    $HF_ENDPOINT = "https://hf-mirror.com"
-    Write-Host "  [OK] Using China mirrors (Tsinghua PyPI + HF-Mirror)" -ForegroundColor Green
-} else {
-    Write-Host "  [OK] Using default mirrors" -ForegroundColor Green
-}
-Write-Host ""
+
 
 # Check if embedded Python exists
 if (-not (Test-Path $PYTHON_EXE)) {
