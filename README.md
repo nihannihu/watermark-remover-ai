@@ -20,9 +20,13 @@ It uses Florence-2 from Microsoft for watermark identification and LaMA for inpa
 
 ## Demo
 
+Here is a side-by-side comparison of the AI in action:
 
+**Original Video (Before)**
+https://github.com/nihannihu/watermark-remover-ai/raw/main/assets/clip-pre.mp4
 
-
+**Processed Video (After)**
+https://github.com/nihannihu/watermark-remover-ai/raw/main/assets/clip-after.mp4
 
 ---
 
