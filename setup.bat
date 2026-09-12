@@ -54,6 +54,7 @@ if not exist "%PYTHON_EXE%" (
     if exist "!PTH_FILE!" (
         powershell -Command "(Get-Content '!PTH_FILE!' -Raw) -replace '#import site', 'import site' | Set-Content '!PTH_FILE!' -NoNewline"
         echo Lib\site-packages>> "!PTH_FILE!"
+        echo ..>> "!PTH_FILE!"
     )
 
     :: Create Lib\site-packages directory
@@ -95,13 +96,16 @@ findstr /V /B /I /C:"PyGObject" requirements.txt > "%REQ_WINDOWS%"
 :: Override incompatible versions with iopaint-compatible Windows pins
 powershell -NoProfile -Command ^
   "$p = Get-Content '%REQ_WINDOWS%';" ^
-  "$p = $p | Where-Object { $_ -notmatch '^(diffusers|transformers|huggingface-hub|Pillow|opencv-python-headless)' };" ^
+  "$p = $p | Where-Object { $_ -notmatch '^(torch|torchvision|diffusers|transformers|huggingface-hub|Pillow|opencv-python-headless)' };" ^
   "$p += @(" ^
+  "'torch==2.6.0+cu124'," ^
+  "'torchvision==0.21.0+cu124'," ^
   "'diffusers==0.27.2'," ^
   "'transformers>=4.42,<5'," ^
   "'huggingface-hub==0.25.2'," ^
   "'Pillow==9.5.0'," ^
   "'opencv-python>=4.8.0,<4.12.0'," ^
+  "'pythonnet>=3.0.0'," ^
   "'accelerate'," ^
   "'controlnet-aux==0.0.3'," ^
   "'fastapi==0.108.0'," ^
@@ -128,7 +132,7 @@ if errorlevel 1 (
 )
 
 :: Verify key packages before iopaint is installed
-"%PYTHON_EXE%" -c "import torch; import transformers; import webview; import cv2; import PIL; print('OK')" >nul 2>&1
+"%PYTHON_EXE%" -c "import torch; import transformers; import webview; import cv2; import PIL; import clr; print('OK')" >nul 2>&1
 if errorlevel 1 (
     echo   [X] Failed to verify base packages
     pause
@@ -177,7 +181,7 @@ echo.
 echo   [*] Downloading LaMA model (196MB)...
 set LAMA_DIR=%USERPROFILE%\.cache\torch\hub\checkpoints
 set LAMA_FILE=%LAMA_DIR%\big-lama.pt
-set LAMA_URL=https://github.com/Sanster/IOPaint/releases/download/v1.0.0/big-lama.pt
+set LAMA_URL=https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt
 
 if not exist "%LAMA_FILE%" (
     if not exist "%LAMA_DIR%" mkdir "%LAMA_DIR%"

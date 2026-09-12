@@ -17,6 +17,7 @@ class PyWebviewFilter(logging.Filter):
         return True
 
 logging.getLogger('pywebview').addFilter(PyWebviewFilter())
+logger = logging.getLogger('remwmgui')
 
 import webview
 import threading
@@ -24,11 +25,45 @@ import subprocess
 import sys
 import os
 
+import traceback
+
+# Auto-flushing stream for pythonw.exe logging
+class _FlushedStream:
+    def __init__(self, f):
+        self.f = f
+    def write(self, s):
+        try:
+            self.f.write(s)
+            self.f.flush()
+        except Exception:
+            pass
+    def flush(self):
+        try:
+            self.f.flush()
+        except Exception:
+            pass
+
 # Redirect stdout/stderr to a log file so pythonw.exe doesn't crash on print()
 if sys.executable.lower().endswith('pythonw.exe') or sys.stdout is None:
-    _log_file = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'remwmgui.log'), 'w', encoding='utf-8')
-    sys.stdout = _log_file
-    sys.stderr = _log_file
+    _log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'remwmgui.log')
+    _raw_log = open(_log_path, 'a', encoding='utf-8')
+    sys.stdout = _FlushedStream(_raw_log)
+    sys.stderr = _FlushedStream(_raw_log)
+
+def _uncaught_excepthook(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    print("\n[CRITICAL UNCAUGHT EXCEPTION]", file=sys.stderr)
+    traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stderr)
+
+sys.excepthook = _uncaught_excepthook
+
+if hasattr(threading, 'excepthook'):
+    def _uncaught_thread_excepthook(args):
+        print(f"\n[CRITICAL UNCAUGHT THREAD EXCEPTION in {args.thread}]", file=sys.stderr)
+        traceback.print_exception(args.exc_type, args.exc_value, args.exc_traceback, file=sys.stderr)
+    threading.excepthook = _uncaught_thread_excepthook
 
 # Resolve the real python.exe path for subprocesses (pythonw.exe has no console)
 def _get_python_exe():
@@ -120,30 +155,110 @@ class Api:
         self._save_config(config)
 
     def browse_file(self):
-        """Open file browser dialog"""
-        if not self.window:
-            return None
+        """Open file browser dialog without deadlocking pywebview on Windows"""
+        try:
+            import clr
+            clr.AddReference('System.Windows.Forms')
+            clr.AddReference('System.Threading')
+            import System.Windows.Forms as WinForms
+            from System.Threading import Thread, ThreadStart, ApartmentState
 
-        file_types = (
-            'All supported files (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm)',
-            'Images (*.png;*.jpg;*.jpeg;*.webp;*.bmp)',
-            'Videos (*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm)',
-            'All files (*.*)'
-        )
+            selected = [None]
+            def _open():
+                dialog = WinForms.OpenFileDialog()
+                dialog.Title = "Select File"
+                dialog.Filter = (
+                    "All Supported Files (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm)|"
+                    "*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm|"
+                    "Images (*.png;*.jpg;*.jpeg;*.webp;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.bmp|"
+                    "Videos (*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm)|*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm|"
+                    "All files (*.*)|*.*"
+                )
+                dialog.RestoreDirectory = True
+                if dialog.ShowDialog() == WinForms.DialogResult.OK:
+                    selected[0] = dialog.FileName
 
-        result = self.window.create_file_dialog(
-            webview.FileDialog.OPEN,
-            file_types=file_types
-        )
-        return result[0] if result else None
+            t = Thread(ThreadStart(_open))
+            t.SetApartmentState(ApartmentState.STA)
+            t.Start()
+            t.Join()
+            return selected[0]
+        except Exception as e:
+            logger.warning(f"STA OpenFileDialog fallback: {e}")
+            if sys.platform == 'win32':
+                try:
+                    ps_cmd = (
+                        "Add-Type -AssemblyName System.Windows.Forms; "
+                        "$f = New-Object System.Windows.Forms.OpenFileDialog; "
+                        "$f.Title = 'Select File'; "
+                        "$f.Filter = 'All Supported Files (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm)|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm|All files (*.*)|*.*'; "
+                        "$f.RestoreDirectory = $true; "
+                        "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.FileName }"
+                    )
+                    res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True)
+                    out = res.stdout.strip()
+                    if out:
+                        return out
+                except Exception as pe:
+                    logger.warning(f"PowerShell OpenFileDialog fallback error: {pe}")
+            if not self.window:
+                return None
+            file_types = (
+                'All supported files (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm)',
+                'Images (*.png;*.jpg;*.jpeg;*.webp;*.bmp)',
+                'Videos (*.mp4;*.avi;*.mov;*.mkv;*.flv;*.wmv;*.webm)',
+                'All files (*.*)'
+            )
+            result = self.window.create_file_dialog(
+                webview.FileDialog.OPEN,
+                file_types=file_types
+            )
+            return result[0] if result else None
 
     def browse_folder(self):
-        """Open folder browser dialog"""
-        if not self.window:
-            return None
+        """Open folder browser dialog without deadlocking pywebview on Windows"""
+        try:
+            import clr
+            clr.AddReference('System.Windows.Forms')
+            clr.AddReference('System.Threading')
+            import System.Windows.Forms as WinForms
+            from System.Threading import Thread, ThreadStart, ApartmentState
 
-        result = self.window.create_file_dialog(webview.FileDialog.FOLDER)
-        return result[0] if result else None
+            selected = [None]
+            def _open():
+                dialog = WinForms.FolderBrowserDialog()
+                dialog.Description = "Select Output Folder"
+                dialog.ShowNewFolderButton = True
+                if dialog.ShowDialog() == WinForms.DialogResult.OK:
+                    selected[0] = dialog.SelectedPath
+
+            t = Thread(ThreadStart(_open))
+            t.SetApartmentState(ApartmentState.STA)
+            t.Start()
+            t.Join()
+            return selected[0]
+        except Exception as e:
+            logger.warning(f"STA FolderBrowserDialog fallback: {e}")
+            if sys.platform == 'win32':
+                try:
+                    ps_cmd = (
+                        "Add-Type -AssemblyName System.Windows.Forms; "
+                        "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                        "$d.Description = 'Select Output Folder'; "
+                        "$d.ShowNewFolderButton = $true; "
+                        "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.SelectedPath }"
+                    )
+                    res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True)
+                    out = res.stdout.strip()
+                    if out:
+                        return out
+                except Exception as pe:
+                    logger.warning(f"PowerShell FolderBrowserDialog fallback error: {pe}")
+            if not self.window:
+                return None
+            result = self.window.create_file_dialog(webview.FileDialog.FOLDER)
+            return result[0] if result else None
+
 
     def _would_overwrite_input(self, input_path, output_path):
         """Check if output would overwrite the input file."""
@@ -206,36 +321,54 @@ class Api:
         return conflicts
 
     def _load_static_info_bg(self):
-        import time
-        time.sleep(1)  # Let the window fully initialize first
         creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+        
+        # 1. Fast GPU check with nvidia-smi (instant, no torch import required)
         try:
-            result = subprocess.run(
-                [PYTHON_EXE, '-c', 'import torch; print("CUDA:" + str(torch.cuda.is_available()) + ":" + (torch.cuda.get_device_name(0) if torch.cuda.is_available() else ""))'],
-                capture_output=True, text=True, timeout=30, creationflags=creationflags
+            res = subprocess.run(
+                ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
+                capture_output=True, text=True, timeout=2, creationflags=creationflags
             )
-            if result.returncode == 0 and 'CUDA:' in result.stdout:
-                parts = result.stdout.strip().split(':')
-                self.static_info['cuda'] = parts[1] == 'True'
-                if len(parts) > 2 and parts[2]:
-                    self.static_info['gpu_name'] = parts[2]
+            if res.returncode == 0 and res.stdout.strip():
+                gpu_name = res.stdout.strip().splitlines()[0].strip()
+                self.static_info['cuda'] = True
+                self.static_info['gpu_name'] = gpu_name
         except Exception:
             pass
 
+        # If nvidia-smi was not found, check torch as fallback
+        if not self.static_info.get('gpu_name'):
+            try:
+                result = subprocess.run(
+                    [PYTHON_EXE, '-c', 'import torch; print("CUDA:" + str(torch.cuda.is_available()) + ":" + (torch.cuda.get_device_name(0) if torch.cuda.is_available() else ""))'],
+                    capture_output=True, text=True, timeout=6, creationflags=creationflags
+                )
+                if result.returncode == 0 and 'CUDA:' in result.stdout:
+                    parts = result.stdout.strip().split(':')
+                    self.static_info['cuda'] = parts[1] == 'True'
+                    if len(parts) > 2 and parts[2]:
+                        self.static_info['gpu_name'] = parts[2]
+            except Exception:
+                pass
+
+        # 2. Check FFmpeg availability
         try:
             ffmpeg_cmd_path = get_ffmpeg_cmd()
-            subprocess.run([ffmpeg_cmd_path, '-version'], capture_output=True, check=True, timeout=5, creationflags=creationflags)
-            self.static_info['ffmpeg'] = True
+            if os.path.isabs(ffmpeg_cmd_path) and os.path.exists(ffmpeg_cmd_path):
+                self.static_info['ffmpeg'] = True
+            else:
+                subprocess.run([ffmpeg_cmd_path, '-version'], capture_output=True, check=True, timeout=3, creationflags=creationflags)
+                self.static_info['ffmpeg'] = True
         except Exception:
             pass
             
         self.static_info_loaded = True
 
     def get_static_info(self):
-        """Get static system info (CUDA, FFmpeg, GPU) - returns loading status if not ready"""
-        if not self.static_info_loaded:
-            return {'status': 'loading'}
-        return self.static_info
+        """Get static system info (CUDA, FFmpeg, GPU)"""
+        info = dict(self.static_info)
+        info['status'] = 'ready' if self.static_info_loaded else 'loading'
+        return info
 
     def get_dynamic_info(self):
         """Get dynamic system info (RAM) - call periodically"""
@@ -415,9 +548,15 @@ class Api:
                     try:
                         progress_str = line.split('overall_progress:')[1].strip()
                         progress = int(progress_str.replace('%', ''))
-                        self._call_js(f'updateProgress({progress})')
+                        detail = line.split(', overall_progress:')[0].strip() if ', overall_progress:' in line else ''
+                        escaped_detail = json.dumps(detail)
+                        self._call_js(f'updateProgress({progress}, {escaped_detail})')
                     except (ValueError, IndexError):
                         pass
+                    
+                    # Stream frame progress to terminal so user sees real-time activity
+                    escaped = json.dumps(line)
+                    self._call_js(f'addLog({escaped}, "text-neon-cyan")')
                     continue
 
                 # Parse loading phase progress

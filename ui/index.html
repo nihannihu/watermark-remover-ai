@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WM REMOVER - OMNI EDITION</title>
 
-    <!-- Tailwind + Alpine + Fonts -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <!-- Offline Tailwind + Alpine (instant startup, zero network lag, CDN fallback) -->
+    <script src="js/tailwind.js" onerror="this.onerror=null;this.src='https://cdn.tailwindcss.com'"></script>
+    <script defer src="js/alpine.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js'"></script>
     <!-- Base fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Rubik+Glitch&family=Inter:wght@400;800;900&display=swap" rel="stylesheet">
     <!-- Theme fonts -->
@@ -406,6 +406,7 @@
                 </div>
 
                 <p class="mt-4 text-neon-cyan font-mono text-lg" x-text="progress + '%'"></p>
+                <p class="mt-1 text-gray-300 font-mono text-xs max-w-md text-center truncate" x-show="statusDetail" x-text="statusDetail"></p>
 
                 <button @click="stopProcessing()" class="mt-8 px-6 py-2 border border-red-500 text-red-500 hover:bg-red-500 hover:text-white rounded-full font-bold transition-all uppercase text-xs tracking-widest" x-text="t.buttons?.stop || 'Stop'">
                 </button>
@@ -503,9 +504,9 @@
         window.appInstance = null;
 
         // Global functions for Python to call - dispatch events for Alpine to catch
-        function updateProgress(percent) {
+        function updateProgress(percent, detail = '') {
             window.dispatchEvent(new CustomEvent('pywebview-progress', {
-                detail: { percent }
+                detail: { percent, detail }
             }));
         }
 
@@ -555,6 +556,7 @@
                 processing: false,
                 progress: 0,
                 statusMsg: '',
+                statusDetail: '',
                 theme: 'brainrot',  // Default theme for loading screen
                 lang: 'en',
                 t: {}, // translations
@@ -584,9 +586,9 @@
                 previewError: null,
 
                 // Video settings (two-pass processing)
-                detectionSkip: 1,
-                fadeIn: 0,
-                fadeOut: 0,
+                detectionSkip: 3,
+                fadeIn: 0.5,
+                fadeOut: 0.5,
 
                 
                 async init() {
@@ -612,54 +614,64 @@
                     const randomizableLangs = this.availableLanguages.filter(l => l.randomizable).map(l => l.id);
 
                     // Load config when pywebview is ready
+                    let configLoaded = false;
                     const loadConfig = async () => {
-                        if (!window.pywebview?.api) return;
+                        if (configLoaded) return;
+                        configLoaded = true;
                         try {
-                            const config = await pywebview.api.get_config() || {};
+                            const configPromise = window.pywebview?.api?.get_config
+                                ? window.pywebview.api.get_config()
+                                : Promise.resolve({});
+                            const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({}), 1000));
+                            const config = (await Promise.race([configPromise, timeoutPromise])) || {};
                             console.log('Config loaded:', config);
 
                             // Apply all settings
-                            this.inputPath = config.input_path || '';
-                            this.outputPath = config.output_path || '';
-                            this.overwrite = config.overwrite || false;
-                            this.transparent = config.transparent || false;
-                            this.detection = config.max_bbox_percent || 15;
-                            this.format = config.force_format || 'None';
-                            this.mode = config.mode || 'single';
-                            this.detectionPrompt = config.detection_prompt || 'watermark';
-                            this.detectionSkip = config.detection_skip || 1;
-                            this.fadeIn = config.fade_in || 0;
-                            this.fadeOut = config.fade_out || 0;
+                            if (config.input_path) this.inputPath = config.input_path;
+                            if (config.output_path) this.outputPath = config.output_path;
+                            if (config.overwrite !== undefined) this.overwrite = config.overwrite;
+                            if (config.transparent !== undefined) this.transparent = config.transparent;
+                            if (config.max_bbox_percent) this.detection = config.max_bbox_percent;
+                            if (config.force_format) this.format = config.force_format;
+                            if (config.mode) this.mode = config.mode;
+                            if (config.detection_prompt) this.detectionPrompt = config.detection_prompt;
+                            if (config.detection_skip) this.detectionSkip = config.detection_skip;
+                            if (config.fade_in !== undefined) this.fadeIn = config.fade_in;
+                            if (config.fade_out !== undefined) this.fadeOut = config.fade_out;
 
                             // Language
                             this.lang = config.lang || 'en';
                             switchTheme('brainrot');
-                            await this.switchLang(this.lang);
-
-                            this._configLoaded = true;  // Now allow saving
-                            this.isLoading = false;     // Hide loading screen
+                            try {
+                                await this.switchLang(this.lang);
+                            } catch (e) {
+                                console.log('Lang load error:', e);
+                            }
                         } catch (e) {
                             console.log('Config load failed:', e);
                             this.lang = 'en';
                             switchTheme('brainrot');
-                            await this.switchLang(this.lang);
-                            this.isLoading = false;
+                            try {
+                                await this.switchLang(this.lang);
+                            } catch (err) {}
+                        } finally {
+                            this._configLoaded = true;  // Now allow saving
+                            this.isLoading = false;     // Hide loading screen immediately!
                         }
                     };
+
+                    // Safety timer: NEVER stay on loading screen for more than 1 second
+                    setTimeout(() => {
+                        if (this.isLoading) {
+                            this.isLoading = false;
+                        }
+                    }, 1000);
 
                     // Try loading config now if pywebview ready, otherwise wait for event
                     if (window.pywebview?.api) {
                         await loadConfig();
                     } else {
-                        window.addEventListener('pywebviewready', loadConfig);
-                        setTimeout(async () => {
-                            if (this.isLoading) {
-                                this.lang = 'en';
-                                switchTheme('brainrot');
-                                await this.switchLang('en');
-                                this.isLoading = false;
-                            }
-                        }, 8000);
+                        window.addEventListener('pywebviewready', loadConfig, { once: true });
                     }
 
                     // Listen for pywebview events (guard against duplicate listeners when window reloads)
@@ -676,6 +688,9 @@
                     }
                     window.__pywebviewProgressHandler = (e) => {
                         this.progress = e.detail.percent;
+                        if (e.detail.detail) {
+                            this.statusDetail = e.detail.detail;
+                        }
                     };
                     window.addEventListener('pywebview-progress', window.__pywebviewProgressHandler);
 
@@ -685,6 +700,7 @@
                     window.__pywebviewCompleteHandler = () => {
                         this.processing = false;
                         this.progress = 100;
+                        this.statusDetail = '';
                         this.addLogEntry(this.t.logs?.done || "Done! File processed successfully.", "text-neon-pink font-bold");
                     };
                     window.addEventListener('pywebview-complete', window.__pywebviewCompleteHandler);

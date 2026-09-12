@@ -64,7 +64,7 @@ if (-not (Test-Path $PYTHON_EXE)) {
         if (Test-Path $pthFile) {
             $pthContent = Get-Content $pthFile -Raw
             $pthContent = $pthContent -replace "#import site", "import site"
-            $pthContent = $pthContent + "`nLib\site-packages"
+            $pthContent = $pthContent + "`nLib\site-packages`n.."
             Set-Content -Path $pthFile -Value $pthContent -NoNewline
         }
 
@@ -133,7 +133,7 @@ while (-not $process.HasExited) {
 Write-Host "`r                                                                                              "
 
 # Legacy resolver can return non-zero even on success, so verify key packages
-$verifyResult = & $PYTHON_EXE -c "import torch; import transformers; import webview; import cv2; print('OK')" 2>&1
+$verifyResult = & $PYTHON_EXE -c "import torch; import transformers; import webview; import cv2; import clr; print('OK')" 2>&1
 if ($verifyResult -ne "OK") {
     if ($process.ExitCode -ne 0) {
         Write-Host ""
@@ -215,7 +215,7 @@ Write-Host ""
 
 $lamaDir = Join-Path $env:USERPROFILE ".cache\torch\hub\checkpoints"
 $lamaFile = Join-Path $lamaDir "big-lama.pt"
-$lamaUrl = "https://github.com/Sanster/IOPaint/releases/download/v1.0.0/big-lama.pt"
+$lamaUrl = "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt"
 
 if (-not (Test-Path $lamaFile)) {
     # Create directory if needed

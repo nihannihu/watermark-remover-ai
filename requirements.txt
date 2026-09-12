@@ -15,6 +15,7 @@ imageio-ffmpeg>=0.4.9
 
 # GUI (PyWebview for brainrot HTML UI)
 pywebview>=4.0
+pythonnet>=3.0.0; sys_platform == "win32"
 
 # Utilities
 loguru
@@ -24,5 +25,5 @@ psutil
 pyyaml
 
 # qt and gtk gui
-PyGObject
+PyGObject; sys_platform == "linux"
 qtpy
