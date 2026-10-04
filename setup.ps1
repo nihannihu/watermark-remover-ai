@@ -281,13 +281,13 @@ if ($CHINA_MODE) {
 import os
 os.environ['HF_ENDPOINT'] = '$HF_ENDPOINT'
 from huggingface_hub import snapshot_download
-snapshot_download('florence-community/Florence-2-large', local_dir_use_symlinks=False)
+snapshot_download('microsoft/Florence-2-large', local_dir_use_symlinks=False)
 print('FLORENCE_OK')
 "@
 } else {
     $florenceScript = @"
 from huggingface_hub import snapshot_download
-snapshot_download('florence-community/Florence-2-large', local_dir_use_symlinks=False)
+snapshot_download('microsoft/Florence-2-large', local_dir_use_symlinks=False)
 print('FLORENCE_OK')
 "@
 }

@@ -44,6 +44,8 @@ try:
 except ImportError:
     MatLike = np.ndarray
 
+FLORENCE_MODEL_ID = os.environ.get("FLORENCE_MODEL_ID", "microsoft/Florence-2-large")
+
 
 def get_ffmpeg_cmd():
     try:
@@ -931,10 +933,10 @@ def main(input_path: str, output_path: str, preview: bool, overwrite: bool, tran
         model_dtype = torch.float32 if device == "cpu" else None
 
         florence_model = AutoModelForCausalLM.from_pretrained(
-            "microsoft/Florence-2-large",
+            FLORENCE_MODEL_ID,
             trust_remote_code=True,
             torch_dtype=model_dtype).to(device).eval()
-        florence_processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
+        florence_processor = AutoProcessor.from_pretrained(FLORENCE_MODEL_ID, trust_remote_code=True)
 
         # Get sample image from input
         if input_path.is_dir():
@@ -1009,12 +1011,12 @@ def main(input_path: str, output_path: str, preview: bool, overwrite: bool, tran
     # Apply float32 for CPU (compatibility)
     model_dtype = torch.float32 if device == "cpu" else None
 
-    print("Loading Florence-2 model... (first run downloads ~1.5GB)", flush=True)
+    print(f"Loading Florence-2 model ({FLORENCE_MODEL_ID})... (first run downloads ~1.5GB)", flush=True)
     florence_model = AutoModelForCausalLM.from_pretrained(
-        "microsoft/Florence-2-large",
+        FLORENCE_MODEL_ID,
         trust_remote_code=True,
         torch_dtype=model_dtype).to(device).eval()
-    florence_processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
+    florence_processor = AutoProcessor.from_pretrained(FLORENCE_MODEL_ID, trust_remote_code=True)
     print("Florence-2 model loaded.", flush=True)
     logger.info("Florence-2 Model loaded")
 
