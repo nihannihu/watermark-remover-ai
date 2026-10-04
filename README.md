@@ -59,20 +59,20 @@ cd WatermarkRemover-AI
 .\setup.ps1
 ```
 
-After setup, double-click `run.bat` to launch the app.
+After setup, double-click `run.bat` (or `start.bat`) to launch the app.
 
 ### Linux / macOS
 
-Requires Python 3.10+ installed on your system.
+Requires Python 3.10 - 3.12 installed on your system.
 
 ```bash
 git clone https://github.com/nihannihu/watermark-remover-ai.git
 cd WatermarkRemover-AI
-chmod +x setup.sh
+chmod +x setup.sh run.sh start.sh
 ./setup.sh
 ```
 
-After setup, run `./run.sh` to launch the app.
+After setup, run `./run.sh` (or `./start.sh`) to launch the app.
 
 ### Optional: FFmpeg
 

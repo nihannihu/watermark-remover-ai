@@ -30,7 +30,7 @@ for cmd in python3.12 python3.11 python3.10 python3 python; do
         version=$($cmd -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
         major=$(echo $version | cut -d. -f1)
         minor=$(echo $version | cut -d. -f2)
-        if [ "$major" -eq 3 ] && [ "$minor" -ge 10 ]; then
+        if [ "$major" -eq 3 ] && [ "$minor" -ge 10 ] && [ "$minor" -le 12 ]; then
             PYTHON_CMD=$cmd
             echo "  [OK] Found $PYTHON_CMD (version $version)"
             break
@@ -39,8 +39,9 @@ for cmd in python3.12 python3.11 python3.10 python3 python; do
 done
 
 if [ -z "$PYTHON_CMD" ]; then
-    echo "  [X] Python 3.10+ is required but not found."
-    echo "      Please install Python 3.10 or higher."
+    echo "  [X] Python 3.10, 3.11, or 3.12 is required but not found."
+    echo "      (Python 3.13+ is not currently supported due to removed standard library modules in dependencies)."
+    echo "      Please install Python 3.10, 3.11, or 3.12."
     exit 1
 fi
 
@@ -70,9 +71,9 @@ echo "  [*] Installing PyTorch..."
 if [ "$OS_TYPE" == "macos" ]; then
     # macOS: Install from main PyPI (supports MPS on Apple Silicon)
     if [ "$CHINA_MODE" == "1" ]; then
-        pip install torch>=2.4.0 torchvision>=0.19.0 --no-cache-dir $PIP_MIRROR -q
+        pip install "torch>=2.4.0" "torchvision>=0.19.0" --no-cache-dir $PIP_MIRROR -q
     else
-        pip install torch>=2.4.0 torchvision>=0.19.0 --no-cache-dir -q
+        pip install "torch>=2.4.0" "torchvision>=0.19.0" --no-cache-dir -q
     fi
     echo "  [OK] PyTorch installed (MPS support on Apple Silicon)"
 else
@@ -80,17 +81,17 @@ else
     if command -v nvidia-smi &> /dev/null; then
         echo "  [*] NVIDIA GPU detected, installing CUDA version..."
         if [ "$CHINA_MODE" == "1" ]; then
-            pip install torch>=2.4.0 torchvision>=0.19.0 --extra-index-url https://download.pytorch.org/whl/cu124 --no-cache-dir $PIP_MIRROR -q
+            pip install "torch>=2.4.0" "torchvision>=0.19.0" --extra-index-url https://download.pytorch.org/whl/cu124 --no-cache-dir $PIP_MIRROR -q
         else
-            pip install torch>=2.4.0 torchvision>=0.19.0 --extra-index-url https://download.pytorch.org/whl/cu124 --no-cache-dir -q
+            pip install "torch>=2.4.0" "torchvision>=0.19.0" --extra-index-url https://download.pytorch.org/whl/cu124 --no-cache-dir -q
         fi
         echo "  [OK] PyTorch installed (CUDA 12.4)"
     else
         echo "  [*] No NVIDIA GPU detected, installing CPU version..."
         if [ "$CHINA_MODE" == "1" ]; then
-            pip install torch>=2.4.0 torchvision>=0.19.0 --no-cache-dir $PIP_MIRROR -q
+            pip install "torch>=2.4.0" "torchvision>=0.19.0" --no-cache-dir $PIP_MIRROR -q
         else
-            pip install torch>=2.4.0 torchvision>=0.19.0 --no-cache-dir -q
+            pip install "torch>=2.4.0" "torchvision>=0.19.0" --no-cache-dir -q
         fi
         echo "  [OK] PyTorch installed (CPU)"
     fi
@@ -99,15 +100,15 @@ fi
 # Install other dependencies (without torch lines)
 echo "  [*] Installing other dependencies..."
 if [ "$CHINA_MODE" == "1" ]; then
-    pip install transformers>=4.50.0 diffusers>=0.30.0 "numpy<2" --no-cache-dir $PIP_MIRROR -q
+    pip install "transformers>=4.42.0,<5.0.0" "diffusers>=0.30.0" "numpy<2" --no-cache-dir $PIP_MIRROR -q
     pip install "opencv-python-headless>=4.8.0,<4.12.0" "Pillow>=10.0.0" --no-cache-dir $PIP_MIRROR -q
-    pip install pywebview>=4.0 --no-cache-dir $PIP_MIRROR -q
-    pip install loguru click tqdm psutil pyyaml --no-cache-dir $PIP_MIRROR -q
+    pip install "pywebview>=4.0" --no-cache-dir $PIP_MIRROR -q
+    pip install loguru click tqdm psutil pyyaml einops imageio-ffmpeg --no-cache-dir $PIP_MIRROR -q
 else
-    pip install transformers>=4.50.0 diffusers>=0.30.0 "numpy<2" --no-cache-dir -q
+    pip install "transformers>=4.42.0,<5.0.0" "diffusers>=0.30.0" "numpy<2" --no-cache-dir -q
     pip install "opencv-python-headless>=4.8.0,<4.12.0" "Pillow>=10.0.0" --no-cache-dir -q
-    pip install pywebview>=4.0 --no-cache-dir -q
-    pip install loguru click tqdm psutil pyyaml --no-cache-dir -q
+    pip install "pywebview>=4.0" --no-cache-dir -q
+    pip install loguru click tqdm psutil pyyaml einops imageio-ffmpeg --no-cache-dir -q
 fi
 
 # Install iopaint separately (no deps to avoid conflicts)
@@ -127,13 +128,24 @@ else
 fi
 echo "  [OK] Dependencies installed"
 
+# Verify dependencies
+echo "  [*] Verifying dependencies..."
+python -c "import torch; import transformers; import cv2; import PIL; import einops; print('  [OK] Core dependencies verified')" || {
+    echo "  [X] Core dependency verification failed"
+    exit 1
+}
+python -c "import pydantic; import typer; import einops; import omegaconf; import easydict; import yacs; print('  [OK] Inpainting dependencies verified')" || {
+    echo "  [X] Inpainting dependency verification failed"
+    exit 1
+}
+
 # Download LaMA model directly from GitHub (avoids iopaint CLI dependency on fastapi)
 echo "  [*] Downloading LaMA model (~196MB)..."
 LAMA_DIR="$HOME/.cache/torch/hub/checkpoints"
 LAMA_FILE="$LAMA_DIR/big-lama.pt"
 if [ ! -f "$LAMA_FILE" ]; then
     mkdir -p "$LAMA_DIR"
-    curl -L -o "$LAMA_FILE" "https://github.com/Sanster/IOPaint/releases/download/v1.0.0/big-lama.pt" || echo "  [!] LaMA download failed, will retry on first use"
+    curl -L -o "$LAMA_FILE" "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt" || echo "  [!] LaMA download failed, will retry on first use"
     echo "  [OK] LaMA model downloaded"
 else
     echo "  [OK] LaMA model already exists"
@@ -143,9 +155,9 @@ fi
 echo "  [*] Downloading Florence-2 model (~1.5GB)..."
 if [ "$CHINA_MODE" == "1" ]; then
     echo "      Using HF-Mirror for faster download in China"
-    HF_ENDPOINT="$HF_ENDPOINT" python -c "import os; os.environ['HF_ENDPOINT']='$HF_ENDPOINT'; from huggingface_hub import snapshot_download; snapshot_download('florence-community/Florence-2-large', local_dir_use_symlinks=False)" || echo "  [!] Florence-2 download failed, will retry on first use"
+    HF_ENDPOINT="$HF_ENDPOINT" python -c "import os; os.environ['HF_ENDPOINT']='$HF_ENDPOINT'; from huggingface_hub import snapshot_download; snapshot_download('microsoft/Florence-2-large', local_dir_use_symlinks=False)" || echo "  [!] Florence-2 download failed, will retry on first use"
 else
-    python -c "from huggingface_hub import snapshot_download; snapshot_download('florence-community/Florence-2-large', local_dir_use_symlinks=False)" || echo "  [!] Florence-2 download failed, will retry on first use"
+    python -c "from huggingface_hub import snapshot_download; snapshot_download('microsoft/Florence-2-large', local_dir_use_symlinks=False)" || echo "  [!] Florence-2 download failed, will retry on first use"
 fi
 
 echo ""
